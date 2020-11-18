@@ -19,7 +19,9 @@ async fn host_receiver_loop(tx: SocketAddr, rx: SocketAddr) -> anyhow::Result<()
     let rx = UdpSocket::bind(rx).await?;
     let mut buf = vec![0; 1000];
     loop {
+        info!("Receiving...");
         let len = rx.recv(&mut buf).await?;
+        info!("Received.");
         let packet = rosc::decoder::decode(&buf[..len]).map_err(|e| anyhow!("{:?}", e))?;
         let msg = match packet {
             OscPacket::Message(msg) => {
