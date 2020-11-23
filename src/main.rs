@@ -20,18 +20,20 @@ pub mod message;
 
 const HOST_QUEUE_LEN: usize = 100;
 
-async fn host_sender_loop(mut chan_rx: mpsc::Receiver<Message>) -> anyhow::Result<()> {
+async fn device_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Message>) -> anyhow::Result<()> {
+    let tx = UdpSocket::bind(tx_addr).await?;
     while let Some(msg) = chan_rx.recv().await {
         info!("Received: {:?}", msg);
         let packet = rosc::encoder::encode(&OscPacket::Bundle(
                 OscBundle { timetag: (0, 0),
                             content: vec![OscPacket::Message(OscMessage::from(&msg))]
                 })).map_err(|e| anyhow!("{:?}", e))?;
+        tx.send(&packet).await?;
     }
-    bail!("host_sender_loop finished");
+    bail!("host_sender_loop unexpected finished");
 }
 
-async fn host_receiver_loop(tx_addr: SocketAddr, rx_addr: SocketAddr) -> anyhow::Result<()> {
+async fn host_receiver_loop(tx_addr: SocketAddr, rx_addr: SocketAddr, chan_tx: mpsc::Sender<Message>) -> anyhow::Result<()> {
     let tx = UdpSocket::bind(tx_addr).await?;
     let rx = UdpSocket::bind(rx_addr).await?;
     let mut buf = vec![0; 1000];
@@ -53,9 +55,9 @@ async fn host_receiver_loop(tx_addr: SocketAddr, rx_addr: SocketAddr) -> anyhow:
                 }
             }
         })?;
-        if let Message::Mz(n1, n2) = msg {
-        } else {
-        }
+        let meas_fut = async {
+        };
+        chan_tx.send(msg).await?;
     }
 }
 
@@ -74,12 +76,13 @@ async fn main() -> anyhow::Result<()> {
     let device_rx = args().nth(4)
                           .and_then(|s| SocketAddr::from_str(&s).ok())
                           .expect("Receiver addr required.");
-    let device_tx = UdpSocket::bind(device_tx).await?;
-    let device_rx = UdpSocket::bind(device_rx).await?;
+    let (chan_tx, chan_rx) = mpsc::channel(HOST_QUEUE_LEN);
     // info!("{:?}, {:?}", host_tx, host_rx);
     // info!("{:?}, {:?}", device_tx, device_rx);
-    let host_receiver = task::spawn(host_receiver_loop(host_tx, host_rx));
+    let host_receiver = task::spawn(host_receiver_loop(host_tx, host_rx, chan_tx));
+    let device_sender = task::spawn(device_sender_loop(device_tx, chan_rx));
 
     host_receiver.await??;
+    device_sender.await??;
     Ok(())
 }
