@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::env::args;
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -10,20 +11,21 @@ use anyhow::{anyhow, bail, ensure};
 #[allow(unused_imports)]
 use log::{LevelFilter, info, warn};
 
-use rosc::{OscPacket};
+use message::Message;
+use rosc::{OscBundle, OscMessage, OscPacket};
 
 pub mod message;
 
-async fn host_receiver_loop(tx: SocketAddr, rx: SocketAddr) -> anyhow::Result<()> {
-    let tx = UdpSocket::bind(tx).await?;
-    let rx = UdpSocket::bind(rx).await?;
+async fn host_receiver_loop(tx_addr: SocketAddr, rx_addr: SocketAddr) -> anyhow::Result<()> {
+    let tx = UdpSocket::bind(tx_addr).await?;
+    let rx = UdpSocket::bind(rx_addr).await?;
     let mut buf = vec![0; 1000];
+    let mut fut = 
     loop {
-        info!("Receiving...");
+        info!("Receiving from {}...", rx_addr);
         let len = rx.recv(&mut buf).await?;
-        info!("Received.");
         let packet = rosc::decoder::decode(&buf[..len]).map_err(|e| anyhow!("{:?}", e))?;
-        let msg = match packet {
+        let msg = Message::try_from(match packet {
             OscPacket::Message(msg) => {
                 warn!("Message without Bundle");
                 msg
@@ -36,8 +38,16 @@ async fn host_receiver_loop(tx: SocketAddr, rx: SocketAddr) -> anyhow::Result<()
                     OscPacket::Bundle(_bundle) => bail!("Received nested bundle.")
                 }
             }
-        };
-        info!("{:?}", msg);
+        })?;
+        info!("Received: {:?}", msg);
+        let packet = rosc::encoder::encode(&OscPacket::Bundle(
+                OscBundle { timetag: (0, 0),
+                            content: vec![OscPacket::Message(OscMessage::from(&msg))]
+                })).map_err(|e| anyhow!("{:?}", e))?;
+        tx.send(&packet);
+        if let Message::Mz(n1, n2) = msg {
+        } else {
+        }
     }
 }
 

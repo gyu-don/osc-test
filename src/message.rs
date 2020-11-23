@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::convert::{From, TryFrom};
 
 use rosc::{OscMessage, OscType};
 use thiserror::Error;
@@ -48,6 +48,24 @@ impl TryFrom<OscMessage> for Message {
             "/CX" => Ok(Message::CX(get(0)?, get(1)?, get(2)?, get(3)?)),
             "/Mz" => Ok(Message::Mz(get(0)?, get(1)?)),
             _ => Err(MessageError::InvalidAddr(addr).into())
+        }
+    }
+}
+
+impl From<&Message> for OscMessage {
+    fn from(msg: &Message) -> OscMessage {
+        match msg {
+            Message::InitZero(n1, n2) => OscMessage { addr: "/InitZero".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2)] },
+            Message::X(n1, n2) => OscMessage { addr: "/X".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2)] },
+            Message::Y(n1, n2) => OscMessage { addr: "/Y".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2)] },
+            Message::Z(n1, n2) => OscMessage { addr: "/Z".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2)] },
+            Message::H(n1, n2) => OscMessage { addr: "/H".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2)] },
+            Message::S(n1, n2) => OscMessage { addr: "/S".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2)] },
+            Message::Sdg(n1, n2) => OscMessage { addr: "/Sdg".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2)] },
+            Message::T(n1, n2) => OscMessage { addr: "/T".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2)] },
+            Message::Tdg(n1, n2) => OscMessage { addr: "/Tdg".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2)] },
+            Message::CX(n1, n2, n3, n4) => OscMessage { addr: "/CX".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2), OscType::Int(*n3), OscType::Int(*n4)] },
+            Message::Mz(n1, n2) => OscMessage { addr: "/Mz".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2)] },
         }
     }
 }
