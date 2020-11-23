@@ -1,10 +1,12 @@
+use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::env::args;
 use std::net::SocketAddr;
 use std::str::FromStr;
 
-use tokio::net::UdpSocket;
 use tokio::task;
+use tokio::net::UdpSocket;
+use tokio::sync::mpsc;
 
 use anyhow::{anyhow, bail, ensure};
 
@@ -16,11 +18,23 @@ use rosc::{OscBundle, OscMessage, OscPacket};
 
 pub mod message;
 
+const HOST_QUEUE_LEN: usize = 100;
+
+async fn host_sender_loop(mut chan_rx: mpsc::Receiver<Message>) -> anyhow::Result<()> {
+    while let Some(msg) = chan_rx.recv().await {
+        info!("Received: {:?}", msg);
+        let packet = rosc::encoder::encode(&OscPacket::Bundle(
+                OscBundle { timetag: (0, 0),
+                            content: vec![OscPacket::Message(OscMessage::from(&msg))]
+                })).map_err(|e| anyhow!("{:?}", e))?;
+    }
+    bail!("host_sender_loop finished");
+}
+
 async fn host_receiver_loop(tx_addr: SocketAddr, rx_addr: SocketAddr) -> anyhow::Result<()> {
     let tx = UdpSocket::bind(tx_addr).await?;
     let rx = UdpSocket::bind(rx_addr).await?;
     let mut buf = vec![0; 1000];
-    let mut fut = 
     loop {
         info!("Receiving from {}...", rx_addr);
         let len = rx.recv(&mut buf).await?;
@@ -39,12 +53,6 @@ async fn host_receiver_loop(tx_addr: SocketAddr, rx_addr: SocketAddr) -> anyhow:
                 }
             }
         })?;
-        info!("Received: {:?}", msg);
-        let packet = rosc::encoder::encode(&OscPacket::Bundle(
-                OscBundle { timetag: (0, 0),
-                            content: vec![OscPacket::Message(OscMessage::from(&msg))]
-                })).map_err(|e| anyhow!("{:?}", e))?;
-        tx.send(&packet);
         if let Message::Mz(n1, n2) = msg {
         } else {
         }
@@ -68,8 +76,8 @@ async fn main() -> anyhow::Result<()> {
                           .expect("Receiver addr required.");
     let device_tx = UdpSocket::bind(device_tx).await?;
     let device_rx = UdpSocket::bind(device_rx).await?;
-    info!("{:?}, {:?}", host_tx, host_rx);
-    info!("{:?}, {:?}", device_tx, device_rx);
+    // info!("{:?}, {:?}", host_tx, host_rx);
+    // info!("{:?}, {:?}", device_tx, device_rx);
     let host_receiver = task::spawn(host_receiver_loop(host_tx, host_rx));
 
     host_receiver.await??;
