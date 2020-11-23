@@ -19,6 +19,7 @@ use rosc::{OscBundle, OscMessage, OscPacket};
 pub mod message;
 
 const HOST_QUEUE_LEN: usize = 100;
+const OSC_BUF_LEN: usize = 1000;
 
 async fn device_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Message>) -> anyhow::Result<()> {
     let tx = UdpSocket::bind(tx_addr).await?;
@@ -33,9 +34,18 @@ async fn device_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Mes
     bail!("host_sender_loop unexpected finished");
 }
 
-async fn host_receiver_loop(tx_addr: SocketAddr, rx_addr: SocketAddr, chan_tx: mpsc::Sender<Message>) -> anyhow::Result<()> {
-    let tx = UdpSocket::bind(tx_addr).await?;
+async fn device_receiver_loop(rx_addr: SocketAddr, chan_tx: mpsc::Receiver<Message>) -> anyhow::Result<()> {
     let rx = UdpSocket::bind(rx_addr).await?;
+    let mut buf = vec![0u8; OSC_BUF_LEN];
+    while let Some(msg) = rx.recv(&mut buf).await {
+        info!("Received from device: {:?}", msg);
+    }
+    bail!("device_receiver_loop unexpected finished");
+}
+
+async fn host_receiver_loop(host_tx_addr: SocketAddr, host_rx_addr: SocketAddr, chan_tx: mpsc::Sender<Message>) -> anyhow::Result<()> {
+    let tx = UdpSocket::bind(host_tx_addr).await?;
+    let rx = UdpSocket::bind(host_rx_addr).await?;
     let mut buf = vec![0; 1000];
     loop {
         info!("Receiving from {}...", rx_addr);
@@ -56,6 +66,9 @@ async fn host_receiver_loop(tx_addr: SocketAddr, rx_addr: SocketAddr, chan_tx: m
             }
         })?;
         let meas_fut = async {
+            if let &Message::Mz(n1, n2) = &msg {
+                //
+            }
         };
         chan_tx.send(msg).await?;
     }
