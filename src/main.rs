@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::env::args;
 use std::net::SocketAddr;
@@ -48,7 +47,7 @@ async fn host_receiver_loop(host_tx_addr: SocketAddr, host_rx_addr: SocketAddr, 
     let rx = UdpSocket::bind(host_rx_addr).await?;
     let mut buf = vec![0; 1000];
     loop {
-        info!("Receiving from {}...", rx_addr);
+        info!("Receiving from {}...", host_rx_addr);
         let len = rx.recv(&mut buf).await?;
         let packet = rosc::decoder::decode(&buf[..len]).map_err(|e| anyhow!("{:?}", e))?;
         let msg = Message::try_from(match packet {
