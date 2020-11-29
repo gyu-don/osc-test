@@ -24,14 +24,14 @@ const OSC_BUF_LEN: usize = 1000;
 async fn device_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Message>) -> anyhow::Result<()> {
     let tx = UdpSocket::bind(tx_addr).await?;
     while let Some(msg) = chan_rx.recv().await {
-        info!("Received: {:?}", msg);
+        info!("device_sender_loop: Received from channel: {:?}", msg);
         let packet = rosc::encoder::encode(&OscPacket::Bundle(
                 OscBundle { timetag: (0, 0),
                             content: vec![OscPacket::Message(OscMessage::from(&msg))]
                 })).map_err(|e| anyhow!("{:?}", e))?;
         tx.send(&packet).await?;
     }
-    bail!("host_sender_loop unexpected finished");
+    bail!("device_sender_loop unexpected finished");
 }
 
 async fn device_receiver_loop(rx_addr: SocketAddr, chan_tx: mpsc::Sender<Message>) -> anyhow::Result<()> {
@@ -60,8 +60,20 @@ async fn device_receiver_loop(rx_addr: SocketAddr, chan_tx: mpsc::Sender<Message
     }
 }
 
-async fn host_receiver_loop(host_tx_addr: SocketAddr, host_rx_addr: SocketAddr, chan_tx: mpsc::Sender<Message>) -> anyhow::Result<()> {
-    let tx = UdpSocket::bind(host_tx_addr).await?;
+async fn host_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Message>) -> anyhow::Result<()> {
+    let tx = UdpSocket::bind(tx_addr).await?;
+    while let Some(msg) = chan_rx.recv().await {
+        info!("host_sender_loop: Received from channel: {:?}", msg);
+        let packet = rosc::encoder::encode(&OscPacket::Bundle(
+                OscBundle { timetag: (0, 0),
+                            content: vec![OscPacket::Message(OscMessage::from(&msg))]
+                })).map_err(|e| anyhow!("{:?}", e))?;
+        tx.send(&packet).await?;
+    }
+    bail!("host_sender_loop unexpected finished");
+}
+
+async fn host_receiver_loop(host_rx_addr: SocketAddr, chan_tx: mpsc::Sender<Message>) -> anyhow::Result<()> {
     let rx = UdpSocket::bind(host_rx_addr).await?;
     let mut buf = vec![0; OSC_BUF_LEN];
     loop {
@@ -82,7 +94,6 @@ async fn host_receiver_loop(host_tx_addr: SocketAddr, host_rx_addr: SocketAddr, 
                 }
             }
         })?;
-        let meas_fut = if let &Message::Mz(n1, n2) = &msg { Some(async { }) } else { None };
         buf.clear();
         chan_tx.send(msg).await?;
     }
@@ -105,12 +116,14 @@ async fn main() -> anyhow::Result<()> {
                           .expect("Receiver addr required.");
     let (chan_tx, chan_rx) = mpsc::channel(HOST_QUEUE_LEN);
     let (chan2_tx, chan2_rx) = mpsc::channel(DEVICE_QUEUE_LEN);
-    let host_receiver = task::spawn(host_receiver_loop(host_tx, host_rx, chan_tx));
+    let host_receiver = task::spawn(host_receiver_loop(host_rx, chan_tx));
     let device_sender = task::spawn(device_sender_loop(device_tx, chan_rx));
     let device_receiver = task::spawn(device_receiver_loop(device_rx, chan2_tx));
+    let host_sender = task::spawn(host_sender_loop(host_tx, chan2_rx));
 
     host_receiver.await??;
     device_sender.await??;
     device_receiver.await??;
+    host_sender.await??;
     Ok(())
 }
