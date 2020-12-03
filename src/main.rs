@@ -12,7 +12,7 @@ use anyhow::{anyhow, bail, ensure};
 #[allow(unused_imports)]
 use log::{LevelFilter, info, warn};
 
-use message::Request;
+use message::{Request, Response};
 use rosc::{OscBundle, OscMessage, OscPacket};
 
 pub mod message;
@@ -34,13 +34,13 @@ async fn device_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Req
     bail!("device_sender_loop unexpected finished");
 }
 
-async fn device_receiver_loop(rx_addr: SocketAddr, chan_tx: mpsc::Sender<Request>) -> anyhow::Result<()> {
+async fn device_receiver_loop(rx_addr: SocketAddr, chan_tx: mpsc::Sender<Response>) -> anyhow::Result<()> {
     let mut buf = vec![0u8; OSC_BUF_LEN];
     let rx = UdpSocket::bind(rx_addr).await?;
     loop {
         let len = rx.recv(&mut buf).await?;
         let packet = rosc::decoder::decode(&buf[..len]).map_err(|e| anyhow!("{:?}", e))?;
-        let msg = Request::try_from(match packet {
+        let msg = Response::try_from(match packet {
             OscPacket::Message(msg) => {
                 warn!("Message without Bundle");
                 msg
@@ -60,7 +60,7 @@ async fn device_receiver_loop(rx_addr: SocketAddr, chan_tx: mpsc::Sender<Request
     }
 }
 
-async fn host_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Request>) -> anyhow::Result<()> {
+async fn host_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Response>) -> anyhow::Result<()> {
     let tx = UdpSocket::bind(tx_addr).await?;
     while let Some(msg) = chan_rx.recv().await {
         info!("host_sender_loop: Received from channel: {:?}", msg);

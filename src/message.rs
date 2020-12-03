@@ -71,7 +71,7 @@ impl From<&Request> for OscMessage {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Response {
+pub enum Response {
     Mz(i32, f32)
 }
 
