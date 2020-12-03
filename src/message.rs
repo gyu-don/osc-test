@@ -3,7 +3,15 @@ use std::convert::{From, TryFrom};
 use rosc::{OscMessage, OscType};
 use thiserror::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Error)]
+pub enum MessageError {
+    #[error("Invalid address `{0}`")]
+    InvalidAddr(String),
+    #[error("Invalid arguments")]
+    InvalidArgs,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request {
     InitZero(i32, i32),
     X(i32, i32),
@@ -16,14 +24,6 @@ pub enum Request {
     Tdg(i32, i32),
     CX(i32, i32, i32, i32),
     Mz(i32, i32),
-}
-
-#[derive(Debug, Clone, Error)]
-pub enum MessageError {
-    #[error("Invalid address `{0}`")]
-    InvalidAddr(String),
-    #[error("Invalid arguments")]
-    InvalidArgs,
 }
 
 impl TryFrom<OscMessage> for Request {
@@ -66,6 +66,32 @@ impl From<&Request> for OscMessage {
             Request::Tdg(n1, n2) => OscMessage { addr: "/Tdg".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2)] },
             Request::CX(n1, n2, n3, n4) => OscMessage { addr: "/CX".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2), OscType::Int(*n3), OscType::Int(*n4)] },
             Request::Mz(n1, n2) => OscMessage { addr: "/Mz".to_owned(), args: vec![OscType::Int(*n1), OscType::Int(*n2)] },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Response {
+    Mz(i32, f32)
+}
+
+impl TryFrom<OscMessage> for Response {
+    type Error = anyhow::Error;
+
+    fn try_from(msg: OscMessage) -> anyhow::Result<Response> {
+        let OscMessage { addr, args } = msg;
+        match addr.as_str() {
+            "/Mz" => Ok(Response::Mz(args.get(0).and_then(|x| x.clone().int()).ok_or(MessageError::InvalidArgs)?,
+                                     args.get(1).and_then(|x| x.clone().float()).ok_or(MessageError::InvalidArgs)?)),
+            _ => Err(MessageError::InvalidAddr(addr).into())
+        }
+    }
+}
+
+impl From<&Response> for OscMessage {
+    fn from(msg: &Response) -> OscMessage {
+        match msg {
+            Response::Mz(n1, f1) => OscMessage { addr: "/Mz".to_owned(), args: vec![OscType::Int(*n1), OscType::Float(*f1)] },
         }
     }
 }
