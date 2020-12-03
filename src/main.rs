@@ -12,7 +12,7 @@ use anyhow::{anyhow, bail, ensure};
 #[allow(unused_imports)]
 use log::{LevelFilter, info, warn};
 
-use message::Message;
+use message::Request;
 use rosc::{OscBundle, OscMessage, OscPacket};
 
 pub mod message;
@@ -21,7 +21,7 @@ const HOST_QUEUE_LEN: usize = 100;
 const DEVICE_QUEUE_LEN: usize = 100;
 const OSC_BUF_LEN: usize = 1000;
 
-async fn device_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Message>) -> anyhow::Result<()> {
+async fn device_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Request>) -> anyhow::Result<()> {
     let tx = UdpSocket::bind(tx_addr).await?;
     while let Some(msg) = chan_rx.recv().await {
         info!("device_sender_loop: Received from channel: {:?}", msg);
@@ -34,13 +34,13 @@ async fn device_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Mes
     bail!("device_sender_loop unexpected finished");
 }
 
-async fn device_receiver_loop(rx_addr: SocketAddr, chan_tx: mpsc::Sender<Message>) -> anyhow::Result<()> {
+async fn device_receiver_loop(rx_addr: SocketAddr, chan_tx: mpsc::Sender<Request>) -> anyhow::Result<()> {
     let mut buf = vec![0u8; OSC_BUF_LEN];
     let rx = UdpSocket::bind(rx_addr).await?;
     loop {
         let len = rx.recv(&mut buf).await?;
         let packet = rosc::decoder::decode(&buf[..len]).map_err(|e| anyhow!("{:?}", e))?;
-        let msg = Message::try_from(match packet {
+        let msg = Request::try_from(match packet {
             OscPacket::Message(msg) => {
                 warn!("Message without Bundle");
                 msg
@@ -60,7 +60,7 @@ async fn device_receiver_loop(rx_addr: SocketAddr, chan_tx: mpsc::Sender<Message
     }
 }
 
-async fn host_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Message>) -> anyhow::Result<()> {
+async fn host_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Request>) -> anyhow::Result<()> {
     let tx = UdpSocket::bind(tx_addr).await?;
     while let Some(msg) = chan_rx.recv().await {
         info!("host_sender_loop: Received from channel: {:?}", msg);
@@ -73,14 +73,14 @@ async fn host_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Messa
     bail!("host_sender_loop unexpected finished");
 }
 
-async fn host_receiver_loop(host_rx_addr: SocketAddr, chan_tx: mpsc::Sender<Message>) -> anyhow::Result<()> {
+async fn host_receiver_loop(host_rx_addr: SocketAddr, chan_tx: mpsc::Sender<Request>) -> anyhow::Result<()> {
     let rx = UdpSocket::bind(host_rx_addr).await?;
     let mut buf = vec![0; OSC_BUF_LEN];
     loop {
         info!("Receiving from {}...", host_rx_addr);
         let len = rx.recv(&mut buf).await?;
         let packet = rosc::decoder::decode(&buf[..len]).map_err(|e| anyhow!("{:?}", e))?;
-        let msg = Message::try_from(match packet {
+        let msg = Request::try_from(match packet {
             OscPacket::Message(msg) => {
                 warn!("Message without Bundle");
                 msg
