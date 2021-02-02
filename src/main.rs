@@ -25,10 +25,8 @@ async fn device_sender_loop(tx_addr: SocketAddr, mut chan_rx: mpsc::Receiver<Req
     let tx = UdpSocket::bind(tx_addr).await?;
     while let Some(msg) = chan_rx.recv().await {
         info!("device_sender_loop: Received from channel: {:?}", msg);
-        let packet = rosc::encoder::encode(&OscPacket::Bundle(
-                OscBundle { timetag: (0, 0),
-                            content: vec![OscPacket::Message(OscMessage::from(&msg))]
-                })).map_err(|e| anyhow!("{:?}", e))?;
+        let packet = rosc::encoder::encode(&OscPacket::Message(OscMessage::from(&msg))
+                ).map_err(|e| anyhow!("{:?}", e))?;
         tx.send(&packet).await?;
     }
     bail!("device_sender_loop unexpected finished");
